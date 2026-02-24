@@ -28,6 +28,18 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
+	// Ruta raíz - Health check
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status":  "online",
+			"message": "API Games Football está en línea ✓",
+			"version": "1.0.0",
+			"endpoints": gin.H{
+				"websocket": "/ws/retas",
+			},
+		})
+	})
+
 	dependenciesretas.InitRetas(r)
 
 	if err := r.Run(":8080"); err != nil {
