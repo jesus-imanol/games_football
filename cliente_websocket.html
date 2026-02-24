@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cliente WebSocket - Retas de Fútbol</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        .section h2 {
+            color: #495057;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #495057;
+            font-weight: 600;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #dee2e6;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        button:disabled {
+            background: #ced4da;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        #messages {
+            background: white;
+            border: 2px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .message {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+            background: #f8f9fa;
+        }
+        .message.error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        .message.success {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        .timestamp {
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏆 Cliente WebSocket - Retas de Fútbol</h1>
+        
+        <div id="status" class="status disconnected">
+            Desconectado
+        </div>
+
+        <div class="grid">
+            <div class="section">
+                <h2>📝 Crear Nueva Reta</h2>
+                <div class="form-group">
+                    <label>Zona ID:</label>
+                    <input type="text" id="crear_zona_id" value="zona_norte" />
+                </div>
+                <div class="form-group">
+                    <label>Título:</label>
+                    <input type="text" id="crear_titulo" value="Reta del Viernes" />
+                </div>
+                <div class="form-group">
+                    <label>Fecha y Hora (YYYY-MM-DD HH:MM:SS):</label>
+                    <input type="text" id="crear_fecha_hora" value="2026-02-28 18:00:00" />
+                </div>
+                <div class="form-group">
+                    <label>Máximo Jugadores:</label>
+                    <input type="number" id="crear_max_jugadores" value="14" />
+                </div>
+                <div class="form-group">
+                    <label>Tu ID:</label>
+                    <input type="text" id="crear_creador_id" value="user_001" />
+                </div>
+                <div class="form-group">
+                    <label>Tu Nombre:</label>
+                    <input type="text" id="crear_creador_nombre" value="Imanol" />
+                </div>
+                <button onclick="crearReta()">Crear Reta</button>
+            </div>
+
+            <div class="section">
+                <h2>👥 Unirse a Reta</h2>
+                <div class="form-group">
+                    <label>Zona ID:</label>
+                    <input type="text" id="unirse_zona_id" value="zona_norte" />
+                </div>
+                <div class="form-group">
+                    <label>ID de Reta:</label>
+                    <input type="text" id="unirse_reta_id" placeholder="Copia el ID de la reta creada" />
+                </div>
+                <div class="form-group">
+                    <label>Tu ID de Usuario:</label>
+                    <input type="text" id="unirse_usuario_id" value="user_002" />
+                </div>
+                <div class="form-group">
+                    <label>Tu Nombre:</label>
+                    <input type="text" id="unirse_nombre" value="Carlos" />
+                </div>
+                <button onclick="unirseReta()">Unirse a Reta</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📨 Mensajes Recibidos</h2>
+            <button onclick="clearMessages()" style="margin-bottom: 10px; background: #6c757d;">
+                Limpiar Mensajes
+            </button>
+            <div id="messages"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let currentZonaId = null;
+
+        function connect() {
+            ws = new WebSocket('ws://localhost:8080/ws/retas');
+            
+            ws.onopen = () => {
+                console.log('WebSocket conectado');
+                document.getElementById('status').textContent = 'Conectado ✓';
+                document.getElementById('status').className = 'status connected';
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket desconectado');
+                document.getElementById('status').textContent = 'Desconectado ✗';
+                document.getElementById('status').className = 'status disconnected';
+                // Reconectar después de 3 segundos
+                setTimeout(connect, 3000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('Error WebSocket:', error);
+                addMessage('Error de conexión', 'error');
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Mensaje recibido:', data);
+                
+                if (data.status === 'error') {
+                    addMessage(JSON.stringify(data, null, 2), 'error');
+                } else {
+                    addMessage(JSON.stringify(data, null, 2), 'success');
+                    
+                    // Si es una nueva reta, auto-llenar el campo de ID
+                    if (data.status === 'nueva_reta' && data.reta) {
+                        document.getElementById('unirse_reta_id').value = data.reta.id;
+                    }
+                }
+            };
+        }
+
+        function crearReta() {
+            const zonaId = document.getElementById('crear_zona_id').value;
+            const titulo = document.getElementById('crear_titulo').value;
+            const fechaHora = document.getElementById('crear_fecha_hora').value;
+            const maxJugadores = parseInt(document.getElementById('crear_max_jugadores').value);
+            const creadorId = document.getElementById('crear_creador_id').value;
+            const creadorNombre = document.getElementById('crear_creador_nombre').value;
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('WebSocket no está conectado');
+                return;
+            }
+
+            const mensaje = {
+                accion: "crear",
+                zona_id: zonaId,
+                titulo: titulo,
+                fecha_hora: fechaHora,
+                max_jugadores: maxJugadores,
+                creador_id: creadorId,
+                creador_nombre: creadorNombre
+            };
+
+            ws.send(JSON.stringify(mensaje));
+            currentZonaId = zonaId;
+            addMessage('Enviado: ' + JSON.stringify(mensaje, null, 2), 'info');
+        }
+
+        function unirseReta() {
+            const zonaId = document.getElementById('unirse_zona_id').value;
+            const retaId = document.getElementById('unirse_reta_id').value;
+            const usuarioId = document.getElementById('unirse_usuario_id').value;
+            const nombre = document.getElementById('unirse_nombre').value;
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('WebSocket no está conectado');
+                return;
+            }
+
+            if (!retaId) {
+                alert('Por favor ingresa el ID de la reta');
+                return;
+            }
+
+            const mensaje = {
+                accion: "unirse",
+                zona_id: zonaId,
+                reta_id: retaId,
+                usuario_id: usuarioId,
+                nombre: nombre
+            };
+
+            ws.send(JSON.stringify(mensaje));
+            addMessage('Enviado: ' + JSON.stringify(mensaje, null, 2), 'info');
+        }
+
+        function addMessage(message, type = 'info') {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + type;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            messageDiv.innerHTML = `
+                <div class="timestamp">${timestamp}</div>
+                <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word;">${message}</pre>
+            `;
+            
+            messagesDiv.insertBefore(messageDiv, messagesDiv.firstChild);
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+
+        // Conectar automáticamente al cargar
+        window.onload = () => {
+            connect();
+        };
+    </script>
+</body>
+</html>
