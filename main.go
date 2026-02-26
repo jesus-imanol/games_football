@@ -29,7 +29,7 @@ func main() {
 	}))
 
 	// Ruta raíz - Health check
-	r.GET("/", func(c *gin.Context) {
+	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"status":  "online",
 			"message": "API Games Football está en línea ✓",
