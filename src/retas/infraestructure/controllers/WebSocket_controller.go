@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -124,9 +125,15 @@ func (wsc *WebSocketController) handleUnirse(client *adapters.Client, msg entiti
 // handleCrear maneja la acción de crear una nueva reta
 func (wsc *WebSocketController) handleCrear(client *adapters.Client, msg entities.WebSocketMessage) {
 	// Validar campos necesarios
-	if msg.Titulo == "" || msg.FechaHora == "" || msg.MaxJugadores == 0 || msg.CreadorID == "" || msg.CreadorNombre == "" {
-		wsc.sendError(client, "Campos requeridos: titulo, fecha_hora, max_jugadores, creador_id, creador_nombre")
+	if msg.Titulo == "" || msg.FechaHora == "" || msg.MaxJugadores == 0 || msg.CreadorNombre == "" {
+		wsc.sendError(client, "Campos requeridos: titulo, fecha_hora, max_jugadores, creador_nombre")
 		return
+	}
+
+	// Generar creador_id automáticamente si no se envía
+	creadorID := msg.CreadorID
+	if creadorID == "" {
+		creadorID = uuid.New().String()
 	}
 
 	// Ejecutar el caso de uso
@@ -135,7 +142,7 @@ func (wsc *WebSocketController) handleCrear(client *adapters.Client, msg entitie
 		msg.Titulo,
 		msg.FechaHora,
 		msg.MaxJugadores,
-		msg.CreadorID,
+		creadorID,
 		msg.CreadorNombre,
 	)
 	if err != nil {

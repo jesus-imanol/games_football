@@ -57,7 +57,6 @@ Todos los mensajes son **JSON** tanto de entrada como de salida.
   "titulo": "Partido del domingo",
   "fecha_hora": "2026-03-01 10:00:00",
   "max_jugadores": 14,
-  "creador_id": "user_123",
   "creador_nombre": "Carlos"
 }
 ```
@@ -69,7 +68,7 @@ Todos los mensajes son **JSON** tanto de entrada como de salida.
 | `titulo`        | string | ✅          | Nombre del partido                             |
 | `fecha_hora`    | string | ✅          | Formato: `"YYYY-MM-DD HH:MM:SS"`               |
 | `max_jugadores` | int    | ✅          | Número máximo de jugadores (ej: 14)            |
-| `creador_id`    | string | ✅          | ID del usuario que crea la reta                |
+| `creador_id`    | string | ⬜          | ID del creador. Si no se envía, el servidor genera un UUID automáticamente |
 | `creador_nombre`| string | ✅          | Nombre del usuario que crea la reta            |
 
 ---
@@ -163,7 +162,7 @@ Todos los mensajes son **JSON** tanto de entrada como de salida.
 | `"Formato de mensaje inválido"`                                      | JSON malformado                          |
 | `"Acción no reconocida"`                                             | `accion` distinto de `crear` / `unirse`  |
 | `"Campos requeridos: reta_id, usuario_id, nombre"`                   | Faltan campos en acción `unirse`         |
-| `"Campos requeridos: titulo, fecha_hora, max_jugadores, creador_id, creador_nombre"` | Faltan campos en acción `crear` |
+| `"Campos requeridos: titulo, fecha_hora, max_jugadores, creador_nombre"` | Faltan campos en acción `crear` |
 
 ---
 
@@ -220,14 +219,13 @@ socket.onmessage = (event) => {
   }
 };
 
-// Crear una reta
+// Crear una reta (creador_id es opcional, el servidor lo genera si no se envía)
 socket.send(JSON.stringify({
   accion: 'crear',
   zona_id: 'zona_norte',
   titulo: 'Partido del domingo',
   fecha_hora: '2026-03-01 10:00:00',
   max_jugadores: 14,
-  creador_id: 'user_123',
   creador_nombre: 'Carlos'
 }));
 
@@ -275,7 +273,6 @@ channel.sink.add(jsonEncode({
   'titulo': 'Partido del domingo',
   'fecha_hora': '2026-03-01 10:00:00',
   'max_jugadores': 14,
-  'creador_id': 'user_123',
   'creador_nombre': 'Carlos',
 }));
 
@@ -324,7 +321,6 @@ let msg: [String: Any] = [
     "titulo": "Partido del domingo",
     "fecha_hora": "2026-03-01 10:00:00",
     "max_jugadores": 14,
-    "creador_id": "user_123",
     "creador_nombre": "Carlos"
 ]
 let jsonData = try! JSONSerialization.data(withJSONObject: msg)
