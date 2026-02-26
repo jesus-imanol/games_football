@@ -4,8 +4,14 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
+)
+
+const (
+	pingPeriod = 30 * time.Second
+	writeWait  = 10 * time.Second
 )
 
 // Client representa un cliente conectado al WebSocket
@@ -77,7 +83,7 @@ func (h *Hub) Run() {
 			log.Printf("Cliente desregistrado de zona: %s", client.ZonaID)
 
 		case broadcastReq := <-h.broadcast:
-			h.mu.RLock()
+			h.mu.Lock()
 			if clients, ok := h.clients[broadcastReq.ZonaID]; ok {
 				for client := range clients {
 					select {
@@ -88,7 +94,7 @@ func (h *Hub) Run() {
 					}
 				}
 			}
-			h.mu.RUnlock()
+			h.mu.Unlock()
 		}
 	}
 }
@@ -118,17 +124,34 @@ func (h *Hub) BroadcastToZone(zonaID string, message interface{}) error {
 	return nil
 }
 
-// WritePump envía mensajes del hub al cliente websocket
+// WritePump envía mensajes del hub al cliente websocket y mantiene la conexión viva con pings
 func (c *Client) WritePump() {
+	ticker := time.NewTicker(pingPeriod)
 	defer func() {
+		ticker.Stop()
 		c.Conn.Close()
 	}()
 
-	for message := range c.Send {
-		err := c.Conn.WriteMessage(websocket.TextMessage, message)
-		if err != nil {
-			log.Printf("Error escribiendo mensaje: %v", err)
-			return
+	for {
+		select {
+		case message, ok := <-c.Send:
+			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if !ok {
+				// El hub cerró el canal
+				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+			err := c.Conn.WriteMessage(websocket.TextMessage, message)
+			if err != nil {
+				log.Printf("Error escribiendo mensaje: %v", err)
+				return
+			}
+		case <-ticker.C:
+			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Printf("Error enviando ping: %v", err)
+				return
+			}
 		}
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	dependenciesretas "games-football-api/src/retas/infraestructure/dependencies_retas"
+	dependenciesusuarios "games-football-api/src/usuarios/infraestructure/dependencies_usuarios"
 	"log"
 	"time"
 
@@ -41,6 +42,7 @@ func main() {
 	})
 
 	dependenciesretas.InitRetas(r)
+	dependenciesusuarios.InitUsuarios(r)
 
 	if err := r.Run(":8080"); err != nil {
 		panic(err)

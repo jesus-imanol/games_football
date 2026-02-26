@@ -7,6 +7,7 @@ import (
 	"games-football-api/src/retas/infraestructure/adapters"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -22,16 +23,18 @@ var upgrader = websocket.Upgrader{
 }
 
 type WebSocketController struct {
-	hub              *adapters.Hub
-	unirseUseCase    *application.UnirseRetaUseCase
-	crearRetaUseCase *application.CrearRetaUseCase
+	hub                 *adapters.Hub
+	unirseUseCase       *application.UnirseRetaUseCase
+	crearRetaUseCase    *application.CrearRetaUseCase
+	obtenerRetasUseCase *application.ObtenerRetasPorZonaUseCase
 }
 
-func NewWebSocketController(hub *adapters.Hub, unirseUseCase *application.UnirseRetaUseCase, crearRetaUseCase *application.CrearRetaUseCase) *WebSocketController {
+func NewWebSocketController(hub *adapters.Hub, unirseUseCase *application.UnirseRetaUseCase, crearRetaUseCase *application.CrearRetaUseCase, obtenerRetasUseCase *application.ObtenerRetasPorZonaUseCase) *WebSocketController {
 	return &WebSocketController{
-		hub:              hub,
-		unirseUseCase:    unirseUseCase,
-		crearRetaUseCase: crearRetaUseCase,
+		hub:                 hub,
+		unirseUseCase:       unirseUseCase,
+		crearRetaUseCase:    crearRetaUseCase,
+		obtenerRetasUseCase: obtenerRetasUseCase,
 	}
 }
 
@@ -58,6 +61,13 @@ func (wsc *WebSocketController) HandleWebSocket(c *gin.Context) {
 	// Iniciar escritura en goroutine
 	go client.WritePump()
 
+	// Configurar pong handler para responder a los pings del servidor
+	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
+
 	// Leer mensajes del cliente
 	for {
 		_, message, err := conn.ReadMessage()
@@ -80,6 +90,22 @@ func (wsc *WebSocketController) HandleWebSocket(c *gin.Context) {
 		if client.ZonaID == "" && wsMsg.ZonaID != "" {
 			client.ZonaID = wsMsg.ZonaID
 			wsc.hub.RegisterClient(client)
+
+			// Enviar las retas existentes de esta zona al cliente recién conectado
+			retas, err := wsc.obtenerRetasUseCase.Execute(client.ZonaID)
+			if err != nil {
+				log.Printf("Error al obtener retas de zona %s: %v", client.ZonaID, err)
+			} else {
+				initMsg := entities.BroadcastMessage{
+					Status: "retas_zona",
+					Retas:  retas,
+				}
+				msgBytes, _ := json.Marshal(initMsg)
+				select {
+				case client.Send <- msgBytes:
+				default:
+				}
+			}
 		}
 
 		// Enrutar según la acción

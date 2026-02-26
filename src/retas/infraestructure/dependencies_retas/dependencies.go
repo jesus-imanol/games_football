@@ -28,9 +28,10 @@ func InitRetas(r *gin.Engine) {
 	// Crear los casos de uso
 	unirseUseCase := application.NewUnirseRetaUseCase(retaRepo)
 	crearRetaUseCase := application.NewCrearRetaUseCase(retaRepo)
+	obtenerRetasUseCase := application.NewObtenerRetasPorZonaUseCase(retaRepo)
 
 	// Crear el controller
-	wsController := controllers.NewWebSocketController(hub, unirseUseCase, crearRetaUseCase)
+	wsController := controllers.NewWebSocketController(hub, unirseUseCase, crearRetaUseCase, obtenerRetasUseCase)
 
 	// Registrar las rutas
 	routers.RetasRouter(r, wsController)

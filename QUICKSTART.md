@@ -117,7 +117,7 @@ ws://localhost:8080/ws/retas
 ### Error: WebSocket no conecta
 - Verifica que la API esté corriendo en el puerto 8080
 - Revisa la consola del navegador (F12) por errores
-- Asegúrate de usar `ws://localhost:8080` (no `wss://`)
+- Asegúrate de usar `ws://localhost:8080` (no `wss://`) en local. En producción usa `wss://apigamesfotball.chuy7x.space`
 
 ### Error: "Reta no encontrada"
 - Verifica que el ID de la reta sea correcto

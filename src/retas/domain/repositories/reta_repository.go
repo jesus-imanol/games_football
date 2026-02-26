@@ -14,4 +14,7 @@ type IRetaRepository interface {
 
 	// ObtenerJugadoresDeReta obtiene la lista de jugadores confirmados de una reta
 	ObtenerJugadoresDeReta(retaID string) ([]entities.Jugador, error)
+
+	// ObtenerRetasPorZona obtiene todas las retas activas de una zona con sus jugadores
+	ObtenerRetasPorZona(zonaID string) ([]entities.RetaInfo, error)
 }

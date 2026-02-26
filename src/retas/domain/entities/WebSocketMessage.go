@@ -18,12 +18,13 @@ type WebSocketMessage struct {
 
 // BroadcastMessage representa los mensajes de broadcast
 type BroadcastMessage struct {
-	Status            string    `json:"status"`
-	RetaID            string    `json:"reta_id,omitempty"`
-	JugadoresActuales int       `json:"jugadores_actuales,omitempty"`
-	ListaJugadores    []Jugador `json:"lista_jugadores,omitempty"`
-	Mensaje           string    `json:"mensaje,omitempty"`
-	Reta              *RetaInfo `json:"reta,omitempty"`
+	Status            string     `json:"status"`
+	RetaID            string     `json:"reta_id,omitempty"`
+	JugadoresActuales int        `json:"jugadores_actuales,omitempty"`
+	ListaJugadores    []Jugador  `json:"lista_jugadores,omitempty"`
+	Mensaje           string     `json:"mensaje,omitempty"`
+	Reta              *RetaInfo  `json:"reta,omitempty"`
+	Retas             []RetaInfo `json:"retas,omitempty"`
 }
 
 // RetaInfo para el mensaje de nueva reta

@@ -4,10 +4,10 @@
 
 | Campo       | Valor                        |
 |-------------|------------------------------|
-| Protocolo   | WebSocket (`ws://`)          |
+| Protocolo   | WebSocket seguro (`wss://`)  |
 | Host        | `apigamesfotball.chuy7x.space` |
 | Endpoint    | `/ws/retas`                    |
-| URL completa| `ws://apigamesfotball.chuy7x.space/ws/retas` |
+| URL completa| `wss://apigamesfotball.chuy7x.space/ws/retas` |
 
 > En producción usa el dominio `apigamesfotball.chuy7x.space`.
 
@@ -36,7 +36,7 @@ GET http://apigamesfotball.chuy7x.space/
 ## Flujo general de conexión
 
 ```
-1. App abre conexión WebSocket → ws://apigamesfotball.chuy7x.space/ws/retas
+1. App abre conexión WebSocket → wss://apigamesfotball.chuy7x.space/ws/retas
 2. App envía JSON con { "zona_id": "...", "accion": "..." }
 3. El servidor hace broadcast a todos los clientes de esa zona_id
 4. App recibe JSON con el resultado en tiempo real
@@ -98,6 +98,35 @@ Todos los mensajes son **JSON** tanto de entrada como de salida.
 ## Mensajes que recibe el cliente (Servidor → Frontend)
 
 > Todos los clientes conectados a la misma `zona_id` reciben estos mensajes en tiempo real (broadcast).
+
+### Respuesta: retas_zona (al conectarse)
+
+Se envía automáticamente al cliente en cuanto manda su primer mensaje con `zona_id`. Contiene todas las retas existentes de esa zona.
+
+```json
+{
+  "status": "retas_zona",
+  "retas": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "titulo": "Partido del domingo",
+      "fecha_hora": "2026-03-01 10:00:00",
+      "max_jugadores": 6,
+      "jugadores_actuales": 1,
+      "lista_jugadores": [
+        {
+          "id": "uuid-jugador",
+          "nombre": "Carlos",
+          "usuario_id": "user_123",
+          "reta_id": "550e8400-e29b-41d4-a716-446655440000"
+        }
+      ]
+    }
+  ]
+}
+```
+
+> Si no hay retas en esa zona, `retas` llega como array vacío `[]`.
 
 ### Respuesta: nueva_reta (al crear)
 
@@ -195,7 +224,7 @@ Todos los mensajes son **JSON** tanto de entrada como de salida.
 ### JavaScript / React Native / Web
 
 ```js
-const socket = new WebSocket('ws://apigamesfotball.chuy7x.space/ws/retas');
+const socket = new WebSocket('wss://apigamesfotball.chuy7x.space/ws/retas');
 
 socket.onopen = () => {
   console.log('Conectado');
@@ -246,7 +275,7 @@ import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 final channel = WebSocketChannel.connect(
-  Uri.parse('ws://apigamesfotball.chuy7x.space/ws/retas'),
+  Uri.parse('wss://apigamesfotball.chuy7x.space/ws/retas'),
 );
 
 // Escuchar mensajes
@@ -291,7 +320,7 @@ channel.sink.add(jsonEncode({
 ```swift
 import Foundation
 
-let url = URL(string: "ws://apigamesfotball.chuy7x.space/ws/retas")!
+let url = URL(string: "wss://apigamesfotball.chuy7x.space/ws/retas")!
 let task = URLSession.shared.webSocketTask(with: url)
 task.resume()
 

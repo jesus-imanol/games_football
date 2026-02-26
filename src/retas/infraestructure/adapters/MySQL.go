@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"games-football-api/src/retas/domain/entities"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -48,6 +49,18 @@ func (repo *MySQLRetaRepository) UnirseReta(retaID, usuarioID, nombreJugador str
 	if jugadoresActuales >= maxJugadores {
 		tx.Rollback()
 		return 0, nil, errors.New("reta llena")
+	}
+
+	// Validar que el usuario_id exista en la tabla usuarios
+	var existeUsuario int
+	checkUsuarioQuery := "SELECT COUNT(*) FROM usuarios WHERE id = ?"
+	err = tx.QueryRow(checkUsuarioQuery, usuarioID).Scan(&existeUsuario)
+	if err != nil {
+		return 0, nil, fmt.Errorf("error al verificar usuario: %w", err)
+	}
+	if existeUsuario == 0 {
+		tx.Rollback()
+		return 0, nil, errors.New("el usuario no existe")
 	}
 
 	// Verificar si el usuario ya está inscrito en esta reta
@@ -147,9 +160,76 @@ func (repo *MySQLRetaRepository) CrearReta(reta *entities.Reta) (*entities.Reta,
 	return reta, primerJugador, nil
 }
 
-// ObtenerJugadoresDeReta obtiene la lista de jugadores confirmados
+// ObtenerRetasPorZona obtiene todas las retas de una zona con sus jugadores
+func (repo *MySQLRetaRepository) ObtenerRetasPorZona(zonaID string) ([]entities.RetaInfo, error) {
+	query := `
+		SELECT r.id, r.titulo, r.fecha_hora, r.max_jugadores, r.jugadores_actuales,
+		       rj.id as jugador_id, rj.usuario_id, u.nombre
+		FROM retas r
+		LEFT JOIN reta_jugadores rj ON r.id = rj.reta_id
+		LEFT JOIN usuarios u ON rj.usuario_id = u.id
+		WHERE r.zona_id = ?
+		ORDER BY r.created_at DESC, rj.created_at ASC
+	`
+	rows, err := repo.db.Query(query, zonaID)
+	if err != nil {
+		return nil, fmt.Errorf("error al consultar retas: %w", err)
+	}
+	defer rows.Close()
+
+	retasMap := make(map[string]*entities.RetaInfo)
+	orden := []string{}
+
+	for rows.Next() {
+		var retaID, titulo string
+		var fechaHora time.Time
+		var maxJugadores, jugadoresActuales int
+		var jugadorID, usuarioID, nombreJugador sql.NullString
+
+		err := rows.Scan(&retaID, &titulo, &fechaHora, &maxJugadores, &jugadoresActuales,
+			&jugadorID, &usuarioID, &nombreJugador)
+		if err != nil {
+			return nil, fmt.Errorf("error al escanear reta: %w", err)
+		}
+
+		if _, exists := retasMap[retaID]; !exists {
+			retasMap[retaID] = &entities.RetaInfo{
+				ID:                retaID,
+				Titulo:            titulo,
+				FechaHora:         fechaHora.Format("2006-01-02 15:04:05"),
+				MaxJugadores:      maxJugadores,
+				JugadoresActuales: jugadoresActuales,
+				ListaJugadores:    []entities.Jugador{},
+			}
+			orden = append(orden, retaID)
+		}
+
+		if jugadorID.Valid {
+			retasMap[retaID].ListaJugadores = append(retasMap[retaID].ListaJugadores, entities.Jugador{
+				ID:        jugadorID.String,
+				UsuarioID: usuarioID.String,
+				Nombre:    nombreJugador.String,
+				RetaID:    retaID,
+			})
+		}
+	}
+
+	result := make([]entities.RetaInfo, 0, len(orden))
+	for _, id := range orden {
+		result = append(result, *retasMap[id])
+	}
+	return result, nil
+}
+
+// ObtenerJugadoresDeReta obtiene la lista de jugadores confirmados con nombre real de usuarios
 func (repo *MySQLRetaRepository) ObtenerJugadoresDeReta(retaID string) ([]entities.Jugador, error) {
-	query := "SELECT id, usuario_id, nombre_jugador FROM reta_jugadores WHERE reta_id = ? ORDER BY created_at ASC"
+	query := `
+		SELECT rj.id, rj.usuario_id, u.nombre
+		FROM reta_jugadores rj
+		INNER JOIN usuarios u ON rj.usuario_id = u.id
+		WHERE rj.reta_id = ?
+		ORDER BY rj.created_at ASC
+	`
 	rows, err := repo.db.Query(query, retaID)
 	if err != nil {
 		return nil, fmt.Errorf("error al consultar jugadores: %w", err)
