@@ -1,8 +1,8 @@
 -- Script SQL para crear las tablas necesarias
 -- Base de datos: games_football
 
-CREATE DATABASE IF NOT EXISTS games_football;
-USE games_football;
+CREATE DATABASE IF NOT EXISTS gamefotball;
+USE gamefotball;
 
 -- ============================================================
 -- Eliminar tablas en orden correcto (hijos antes que padres)
