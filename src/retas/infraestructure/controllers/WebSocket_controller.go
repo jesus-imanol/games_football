@@ -23,18 +23,20 @@ var upgrader = websocket.Upgrader{
 }
 
 type WebSocketController struct {
-	hub                 *adapters.Hub
-	unirseUseCase       *application.UnirseRetaUseCase
-	crearRetaUseCase    *application.CrearRetaUseCase
-	obtenerRetasUseCase *application.ObtenerRetasPorZonaUseCase
+	hub                    *adapters.Hub
+	unirseUseCase          *application.UnirseRetaUseCase
+	crearRetaUseCase       *application.CrearRetaUseCase
+	obtenerRetasUseCase    *application.ObtenerRetasPorZonaUseCase
+	enviarMensajeUseCase   *application.EnviarMensajeUseCase
 }
 
-func NewWebSocketController(hub *adapters.Hub, unirseUseCase *application.UnirseRetaUseCase, crearRetaUseCase *application.CrearRetaUseCase, obtenerRetasUseCase *application.ObtenerRetasPorZonaUseCase) *WebSocketController {
+func NewWebSocketController(hub *adapters.Hub, unirseUseCase *application.UnirseRetaUseCase, crearRetaUseCase *application.CrearRetaUseCase, obtenerRetasUseCase *application.ObtenerRetasPorZonaUseCase, enviarMensajeUseCase *application.EnviarMensajeUseCase) *WebSocketController {
 	return &WebSocketController{
-		hub:                 hub,
-		unirseUseCase:       unirseUseCase,
-		crearRetaUseCase:    crearRetaUseCase,
-		obtenerRetasUseCase: obtenerRetasUseCase,
+		hub:                    hub,
+		unirseUseCase:          unirseUseCase,
+		crearRetaUseCase:       crearRetaUseCase,
+		obtenerRetasUseCase:    obtenerRetasUseCase,
+		enviarMensajeUseCase:   enviarMensajeUseCase,
 	}
 }
 
@@ -114,6 +116,8 @@ func (wsc *WebSocketController) HandleWebSocket(c *gin.Context) {
 			wsc.handleUnirse(client, wsMsg)
 		case "crear":
 			wsc.handleCrear(client, wsMsg)
+		case "enviar_mensaje":
+			wsc.handleEnviarMensaje(client, wsMsg)
 		default:
 			wsc.sendError(client, "Acción no reconocida")
 		}
@@ -214,5 +218,32 @@ func (wsc *WebSocketController) sendError(client *adapters.Client, mensaje strin
 	case client.Send <- msgBytes:
 	default:
 		log.Printf("No se pudo enviar mensaje de error al cliente")
+	}
+}
+
+// handleEnviarMensaje maneja la acción de enviar un mensaje al chat en vivo de una reta
+func (wsc *WebSocketController) handleEnviarMensaje(client *adapters.Client, msg entities.WebSocketMessage) {
+	// Validar campos necesarios
+	if msg.RetaID == "" || msg.UsuarioID == "" || msg.Texto == "" {
+		wsc.sendError(client, "Campos requeridos: reta_id, usuario_id, texto")
+		return
+	}
+
+	// Ejecutar el caso de uso
+	mensaje, err := wsc.enviarMensajeUseCase.Execute(msg.RetaID, msg.UsuarioID, msg.Texto)
+	if err != nil {
+		wsc.sendError(client, err.Error())
+		return
+	}
+
+	// Broadcast a todos los clientes de la zona
+	broadcastMsg := entities.BroadcastMessage{
+		Status:      "nuevo_mensaje",
+		RetaID:      msg.RetaID,
+		MensajeChat: mensaje,
+	}
+
+	if err := wsc.hub.BroadcastToZone(client.ZonaID, broadcastMsg); err != nil {
+		log.Printf("Error al hacer broadcast de mensaje: %v", err)
 	}
 }

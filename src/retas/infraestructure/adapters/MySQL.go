@@ -216,6 +216,12 @@ func (repo *MySQLRetaRepository) ObtenerRetasPorZona(zonaID string) ([]entities.
 
 	result := make([]entities.RetaInfo, 0, len(orden))
 	for _, id := range orden {
+		// Obtener historial de chat para cada reta
+		mensajes, err := repo.ObtenerMensajesDeReta(id)
+		if err != nil {
+			mensajes = []entities.Mensaje{}
+		}
+		retasMap[id].HistorialChat = mensajes
 		result = append(result, *retasMap[id])
 	}
 	return result, nil
@@ -247,4 +253,61 @@ func (repo *MySQLRetaRepository) ObtenerJugadoresDeReta(retaID string) ([]entiti
 	}
 
 	return jugadores, nil
+}
+
+// GuardarMensaje inserta un mensaje de chat y retorna el mensaje con el nombre real del usuario (JOIN)
+func (repo *MySQLRetaRepository) GuardarMensaje(mensaje entities.Mensaje) (*entities.Mensaje, error) {
+	mensajeID := uuid.New().String()
+
+	insertQuery := "INSERT INTO mensajes_reta (id, reta_id, usuario_id, texto) VALUES (?, ?, ?, ?)"
+	_, err := repo.db.Exec(insertQuery, mensajeID, mensaje.RetaID, mensaje.UsuarioID, mensaje.Texto)
+	if err != nil {
+		return nil, fmt.Errorf("error al guardar mensaje: %w", err)
+	}
+
+	// Recuperar el mensaje con JOIN a usuarios para obtener el nombre real
+	selectQuery := `
+		SELECT m.id, m.reta_id, m.usuario_id, u.nombre, m.texto, m.creado_en
+		FROM mensajes_reta m
+		INNER JOIN usuarios u ON m.usuario_id = u.id
+		WHERE m.id = ?
+	`
+	var resultado entities.Mensaje
+	err = repo.db.QueryRow(selectQuery, mensajeID).Scan(
+		&resultado.ID, &resultado.RetaID, &resultado.UsuarioID,
+		&resultado.NombreUsuario, &resultado.Texto, &resultado.Timestamp,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error al recuperar mensaje enriquecido: %w", err)
+	}
+
+	return &resultado, nil
+}
+
+// ObtenerMensajesDeReta obtiene el historial completo de mensajes de una reta
+func (repo *MySQLRetaRepository) ObtenerMensajesDeReta(retaID string) ([]entities.Mensaje, error) {
+	query := `
+		SELECT m.id, m.reta_id, m.usuario_id, u.nombre, m.texto, m.creado_en
+		FROM mensajes_reta m
+		INNER JOIN usuarios u ON m.usuario_id = u.id
+		WHERE m.reta_id = ?
+		ORDER BY m.creado_en ASC
+	`
+	rows, err := repo.db.Query(query, retaID)
+	if err != nil {
+		return nil, fmt.Errorf("error al consultar mensajes: %w", err)
+	}
+	defer rows.Close()
+
+	mensajes := make([]entities.Mensaje, 0)
+	for rows.Next() {
+		var msg entities.Mensaje
+		err := rows.Scan(&msg.ID, &msg.RetaID, &msg.UsuarioID, &msg.NombreUsuario, &msg.Texto, &msg.Timestamp)
+		if err != nil {
+			return nil, fmt.Errorf("error al escanear mensaje: %w", err)
+		}
+		mensajes = append(mensajes, msg)
+	}
+
+	return mensajes, nil
 }

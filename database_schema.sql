@@ -7,6 +7,7 @@ USE gamefotball;
 -- ============================================================
 -- Eliminar tablas en orden correcto (hijos antes que padres)
 -- ============================================================
+DROP TABLE IF EXISTS mensajes_reta;
 DROP TABLE IF EXISTS reta_jugadores;
 DROP TABLE IF EXISTS retas;
 DROP TABLE IF EXISTS zonas;
@@ -64,6 +65,21 @@ CREATE TABLE reta_jugadores (
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
     UNIQUE KEY unique_usuario_reta (reta_id, usuario_id),
     INDEX idx_reta_id (reta_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- Tabla de mensajes del chat en vivo de cada reta
+-- ============================================================
+CREATE TABLE mensajes_reta (
+    id VARCHAR(36) PRIMARY KEY,
+    reta_id VARCHAR(36) NOT NULL,
+    usuario_id VARCHAR(36) NOT NULL,
+    texto VARCHAR(500) NOT NULL,
+    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (reta_id) REFERENCES retas(id) ON DELETE CASCADE,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+    INDEX idx_mensajes_reta_id (reta_id),
+    INDEX idx_mensajes_creado_en (reta_id, creado_en ASC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================

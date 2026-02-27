@@ -12,6 +12,7 @@ type Reta struct {
 	CreadorID         string    `json:"creador_id"`
 	CreadorNombre     string    `json:"creador_nombre"`
 	CreatedAt         time.Time `json:"created_at"`
+	HistorialChat     []Mensaje `json:"historial_chat,omitempty"`
 }
 
 func NewReta(zonaID, titulo, fechaHoraStr string, maxJugadores int, creadorID, creadorNombre string) (*Reta, error) {
