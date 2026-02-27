@@ -23,20 +23,22 @@ var upgrader = websocket.Upgrader{
 }
 
 type WebSocketController struct {
-	hub                    *adapters.Hub
-	unirseUseCase          *application.UnirseRetaUseCase
-	crearRetaUseCase       *application.CrearRetaUseCase
-	obtenerRetasUseCase    *application.ObtenerRetasPorZonaUseCase
-	enviarMensajeUseCase   *application.EnviarMensajeUseCase
+	hub                      *adapters.Hub
+	unirseUseCase            *application.UnirseRetaUseCase
+	crearRetaUseCase         *application.CrearRetaUseCase
+	obtenerRetasUseCase      *application.ObtenerRetasPorZonaUseCase
+	enviarMensajeUseCase     *application.EnviarMensajeUseCase
+	historialChatUseCase     *application.ObtenerHistorialChatUseCase
 }
 
-func NewWebSocketController(hub *adapters.Hub, unirseUseCase *application.UnirseRetaUseCase, crearRetaUseCase *application.CrearRetaUseCase, obtenerRetasUseCase *application.ObtenerRetasPorZonaUseCase, enviarMensajeUseCase *application.EnviarMensajeUseCase) *WebSocketController {
+func NewWebSocketController(hub *adapters.Hub, unirseUseCase *application.UnirseRetaUseCase, crearRetaUseCase *application.CrearRetaUseCase, obtenerRetasUseCase *application.ObtenerRetasPorZonaUseCase, enviarMensajeUseCase *application.EnviarMensajeUseCase, historialChatUseCase *application.ObtenerHistorialChatUseCase) *WebSocketController {
 	return &WebSocketController{
-		hub:                    hub,
-		unirseUseCase:          unirseUseCase,
-		crearRetaUseCase:       crearRetaUseCase,
-		obtenerRetasUseCase:    obtenerRetasUseCase,
-		enviarMensajeUseCase:   enviarMensajeUseCase,
+		hub:                      hub,
+		unirseUseCase:            unirseUseCase,
+		crearRetaUseCase:         crearRetaUseCase,
+		obtenerRetasUseCase:      obtenerRetasUseCase,
+		enviarMensajeUseCase:     enviarMensajeUseCase,
+		historialChatUseCase:     historialChatUseCase,
 	}
 }
 
@@ -248,5 +250,151 @@ func (wsc *WebSocketController) handleEnviarMensaje(client *adapters.Client, msg
 
 	if err := wsc.hub.BroadcastToZone(client.ZonaID, broadcastMsg); err != nil {
 		log.Printf("Error al hacer broadcast de mensaje: %v", err)
+	}
+}
+
+// ChatMessage representa el mensaje JSON que recibe el endpoint /ws/retas/chat
+type ChatMessage struct {
+	RetaID    string `json:"reta_id"`
+	ZonaID    string `json:"zona_id"`
+	UsuarioID string `json:"usuario_id,omitempty"`
+	Texto     string `json:"texto,omitempty"`
+}
+
+// ChatBroadcast representa el mensaje de broadcast del chat
+type ChatBroadcast struct {
+	Status      string            `json:"status"`
+	RetaID      string            `json:"reta_id,omitempty"`
+	Mensaje     string            `json:"mensaje,omitempty"`
+	MensajeChat *entities.Mensaje `json:"mensaje_chat,omitempty"`
+	Mensajes    []entities.Mensaje `json:"mensajes,omitempty"`
+}
+
+// HandleChat maneja las conexiones WebSocket dedicadas al chat en vivo
+// Endpoint: /ws/retas/chat
+func (wsc *WebSocketController) HandleChat(c *gin.Context) {
+	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		log.Printf("Error al actualizar a WebSocket (chat): %v", err)
+		return
+	}
+
+	client := &adapters.Client{
+		Conn: conn,
+		Send: make(chan []byte, 256),
+	}
+
+	var retaID string
+
+	defer func() {
+		if client.ZonaID != "" {
+			wsc.hub.UnregisterClient(client)
+		}
+		conn.Close()
+	}()
+
+	// Iniciar escritura en goroutine
+	go client.WritePump()
+
+	// Configurar timeouts y pong handler
+	conn.SetReadDeadline(time.Now().Add(adapters.PongWait))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(adapters.PongWait))
+		return nil
+	})
+
+	// Leer mensajes del cliente
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNormalClosure) {
+				log.Printf("Error inesperado (chat): %v", err)
+			}
+			break
+		}
+
+		// Resetear deadline con cada mensaje
+		conn.SetReadDeadline(time.Now().Add(adapters.PongWait))
+
+		var chatMsg ChatMessage
+		if err := json.Unmarshal(message, &chatMsg); err != nil {
+			log.Printf("Error al parsear mensaje de chat: %v", err)
+			wsc.sendChatError(client, "Formato de mensaje inválido")
+			continue
+		}
+
+		// Primer mensaje: registrar en zona y enviar historial
+		if client.ZonaID == "" && chatMsg.ZonaID != "" && chatMsg.RetaID != "" {
+			client.ZonaID = chatMsg.ZonaID
+			retaID = chatMsg.RetaID
+			wsc.hub.RegisterClient(client)
+
+			// Enviar historial de chat de esta reta
+			mensajes, err := wsc.historialChatUseCase.Execute(retaID)
+			if err != nil {
+				log.Printf("Error al obtener historial de chat para reta %s: %v", retaID, err)
+				mensajes = []entities.Mensaje{}
+			}
+
+			initMsg := ChatBroadcast{
+				Status:   "historial_chat",
+				RetaID:   retaID,
+				Mensajes: mensajes,
+			}
+			msgBytes, _ := json.Marshal(initMsg)
+			select {
+			case client.Send <- msgBytes:
+			default:
+			}
+			continue
+		}
+
+		// Validar que ya se haya registrado
+		if retaID == "" {
+			wsc.sendChatError(client, "Primero envía reta_id y zona_id para unirte al chat")
+			continue
+		}
+
+		// Enviar mensaje de chat
+		if chatMsg.UsuarioID == "" || chatMsg.Texto == "" {
+			wsc.sendChatError(client, "Campos requeridos: usuario_id, texto")
+			continue
+		}
+
+		mensaje, err := wsc.enviarMensajeUseCase.Execute(retaID, chatMsg.UsuarioID, chatMsg.Texto)
+		if err != nil {
+			wsc.sendChatError(client, err.Error())
+			continue
+		}
+
+		broadcastMsg := ChatBroadcast{
+			Status:      "nuevo_mensaje",
+			RetaID:      retaID,
+			MensajeChat: mensaje,
+		}
+
+		if err := wsc.hub.BroadcastToZone(client.ZonaID, broadcastMsg); err != nil {
+			log.Printf("Error al hacer broadcast de mensaje de chat: %v", err)
+		}
+	}
+}
+
+// sendChatError envía un error al cliente del chat
+func (wsc *WebSocketController) sendChatError(client *adapters.Client, mensaje string) {
+	errorMsg := ChatBroadcast{
+		Status:  "error",
+		Mensaje: mensaje,
+	}
+
+	msgBytes, err := json.Marshal(errorMsg)
+	if err != nil {
+		log.Printf("Error al serializar mensaje de error (chat): %v", err)
+		return
+	}
+
+	select {
+	case client.Send <- msgBytes:
+	default:
+		log.Printf("No se pudo enviar mensaje de error al cliente (chat)")
 	}
 }

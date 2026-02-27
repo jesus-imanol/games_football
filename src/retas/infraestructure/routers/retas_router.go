@@ -10,5 +10,6 @@ func RetasRouter(r *gin.Engine, wsController *controllers.WebSocketController) {
 	retasGroup := r.Group("/ws")
 	{
 		retasGroup.GET("/retas", wsController.HandleWebSocket)
+		retasGroup.GET("/retas/chat", wsController.HandleChat)
 	}
 }
