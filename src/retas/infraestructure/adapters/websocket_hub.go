@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	pingPeriod = 30 * time.Second
-	writeWait  = 10 * time.Second
+	PongWait   = 120 * time.Second // Tiempo máximo sin recibir pong del cliente
+	pingPeriod = 30 * time.Second  // Intervalo de envío de pings (debe ser < PongWait)
+	writeWait  = 10 * time.Second  // Tiempo máximo para escribir un mensaje
 )
 
 // Client representa un cliente conectado al WebSocket

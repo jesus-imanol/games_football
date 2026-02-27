@@ -63,10 +63,10 @@ func (wsc *WebSocketController) HandleWebSocket(c *gin.Context) {
 	// Iniciar escritura en goroutine
 	go client.WritePump()
 
-	// Configurar pong handler para responder a los pings del servidor
-	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	// Configurar timeouts y pong handler
+	conn.SetReadDeadline(time.Now().Add(adapters.PongWait))
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		conn.SetReadDeadline(time.Now().Add(adapters.PongWait))
 		return nil
 	})
 
@@ -74,11 +74,14 @@ func (wsc *WebSocketController) HandleWebSocket(c *gin.Context) {
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNormalClosure) {
 				log.Printf("Error inesperado: %v", err)
 			}
 			break
 		}
+
+		// Resetear el deadline con cada mensaje recibido (mantiene la conexión viva)
+		conn.SetReadDeadline(time.Now().Add(adapters.PongWait))
 
 		// Parsear el mensaje
 		var wsMsg entities.WebSocketMessage
