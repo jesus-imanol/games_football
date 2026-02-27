@@ -23,22 +23,22 @@ var upgrader = websocket.Upgrader{
 }
 
 type WebSocketController struct {
-	hub                      *adapters.Hub
-	unirseUseCase            *application.UnirseRetaUseCase
-	crearRetaUseCase         *application.CrearRetaUseCase
-	obtenerRetasUseCase      *application.ObtenerRetasPorZonaUseCase
-	enviarMensajeUseCase     *application.EnviarMensajeUseCase
-	historialChatUseCase     *application.ObtenerHistorialChatUseCase
+	hub                  *adapters.Hub
+	unirseUseCase        *application.UnirseRetaUseCase
+	crearRetaUseCase     *application.CrearRetaUseCase
+	obtenerRetasUseCase  *application.ObtenerRetasPorZonaUseCase
+	enviarMensajeUseCase *application.EnviarMensajeUseCase
+	historialChatUseCase *application.ObtenerHistorialChatUseCase
 }
 
 func NewWebSocketController(hub *adapters.Hub, unirseUseCase *application.UnirseRetaUseCase, crearRetaUseCase *application.CrearRetaUseCase, obtenerRetasUseCase *application.ObtenerRetasPorZonaUseCase, enviarMensajeUseCase *application.EnviarMensajeUseCase, historialChatUseCase *application.ObtenerHistorialChatUseCase) *WebSocketController {
 	return &WebSocketController{
-		hub:                      hub,
-		unirseUseCase:            unirseUseCase,
-		crearRetaUseCase:         crearRetaUseCase,
-		obtenerRetasUseCase:      obtenerRetasUseCase,
-		enviarMensajeUseCase:     enviarMensajeUseCase,
-		historialChatUseCase:     historialChatUseCase,
+		hub:                  hub,
+		unirseUseCase:        unirseUseCase,
+		crearRetaUseCase:     crearRetaUseCase,
+		obtenerRetasUseCase:  obtenerRetasUseCase,
+		enviarMensajeUseCase: enviarMensajeUseCase,
+		historialChatUseCase: historialChatUseCase,
 	}
 }
 
@@ -64,6 +64,19 @@ func (wsc *WebSocketController) HandleWebSocket(c *gin.Context) {
 
 	// Iniciar escritura en goroutine
 	go client.WritePump()
+
+	// Enviar confirmación inmediata de conexión WebSocket establecida
+	confirmMsg := entities.BroadcastMessage{
+		Status:  "conectado",
+		Mensaje: "WebSocket conectado correctamente",
+	}
+	confirmBytes, _ := json.Marshal(confirmMsg)
+	select {
+	case client.Send <- confirmBytes:
+		log.Printf("Confirmación de conexión enviada al cliente")
+	default:
+		log.Printf("No se pudo enviar confirmación de conexión")
+	}
 
 	// Configurar timeouts y pong handler
 	conn.SetReadDeadline(time.Now().Add(adapters.PongWait))
@@ -93,12 +106,21 @@ func (wsc *WebSocketController) HandleWebSocket(c *gin.Context) {
 			continue
 		}
 
-		// Si es la primera vez que el cliente envía un mensaje, registrarlo en su zona
-		if client.ZonaID == "" && wsMsg.ZonaID != "" {
-			client.ZonaID = wsMsg.ZonaID
-			wsc.hub.RegisterClient(client)
+		// Registrar o cambiar de zona si el mensaje trae zona_id
+		if wsMsg.ZonaID != "" && client.ZonaID != wsMsg.ZonaID {
+			// Si ya estaba en otra zona, cambiar sin cerrar la conexión
+			if client.ZonaID != "" {
+				log.Printf("Cliente cambiando de zona %s a %s", client.ZonaID, wsMsg.ZonaID)
+				oldZona := client.ZonaID
+				client.ZonaID = wsMsg.ZonaID
+				wsc.hub.ChangeClientZone(client, oldZona, wsMsg.ZonaID)
+			} else {
+				client.ZonaID = wsMsg.ZonaID
+				wsc.hub.RegisterClient(client)
+			}
+			log.Printf("Cliente registrado en zona: %s", client.ZonaID)
 
-			// Enviar las retas existentes de esta zona al cliente recién conectado
+			// Enviar las retas existentes de esta zona al cliente
 			retas, err := wsc.obtenerRetasUseCase.Execute(client.ZonaID)
 			if err != nil {
 				log.Printf("Error al obtener retas de zona %s: %v", client.ZonaID, err)
@@ -117,14 +139,34 @@ func (wsc *WebSocketController) HandleWebSocket(c *gin.Context) {
 
 		// Enrutar según la acción
 		switch wsMsg.Accion {
+		case "conectar":
+			// Acción explícita para registrarse en una zona sin hacer nada más.
+			// El registro ya se hizo arriba, solo confirmamos.
+			if client.ZonaID != "" {
+				wsc.sendSuccess(client, "zona_registrada", "Registrado en zona: "+client.ZonaID)
+			} else {
+				wsc.sendError(client, "Debes enviar zona_id para conectarte a una zona")
+			}
 		case "unirse":
+			if client.ZonaID == "" {
+				wsc.sendError(client, "Debes conectarte a una zona primero (envía zona_id)")
+				continue
+			}
 			wsc.handleUnirse(client, wsMsg)
 		case "crear":
+			if client.ZonaID == "" {
+				wsc.sendError(client, "Debes conectarte a una zona primero (envía zona_id)")
+				continue
+			}
 			wsc.handleCrear(client, wsMsg)
 		case "enviar_mensaje":
+			if client.ZonaID == "" {
+				wsc.sendError(client, "Debes conectarte a una zona primero (envía zona_id)")
+				continue
+			}
 			wsc.handleEnviarMensaje(client, wsMsg)
 		default:
-			wsc.sendError(client, "Acción no reconocida")
+			wsc.sendError(client, "Acción no reconocida: "+wsMsg.Accion)
 		}
 	}
 }
@@ -226,6 +268,26 @@ func (wsc *WebSocketController) sendError(client *adapters.Client, mensaje strin
 	}
 }
 
+// sendSuccess envía un mensaje de éxito al cliente específico
+func (wsc *WebSocketController) sendSuccess(client *adapters.Client, status string, mensaje string) {
+	successMsg := entities.BroadcastMessage{
+		Status:  status,
+		Mensaje: mensaje,
+	}
+
+	msgBytes, err := json.Marshal(successMsg)
+	if err != nil {
+		log.Printf("Error al serializar mensaje de éxito: %v", err)
+		return
+	}
+
+	select {
+	case client.Send <- msgBytes:
+	default:
+		log.Printf("No se pudo enviar mensaje de éxito al cliente")
+	}
+}
+
 // handleEnviarMensaje maneja la acción de enviar un mensaje al chat en vivo de una reta
 func (wsc *WebSocketController) handleEnviarMensaje(client *adapters.Client, msg entities.WebSocketMessage) {
 	// Validar campos necesarios
@@ -263,10 +325,10 @@ type ChatMessage struct {
 
 // ChatBroadcast representa el mensaje de broadcast del chat
 type ChatBroadcast struct {
-	Status      string            `json:"status"`
-	RetaID      string            `json:"reta_id,omitempty"`
-	Mensaje     string            `json:"mensaje,omitempty"`
-	MensajeChat *entities.Mensaje `json:"mensaje_chat,omitempty"`
+	Status      string             `json:"status"`
+	RetaID      string             `json:"reta_id,omitempty"`
+	Mensaje     string             `json:"mensaje,omitempty"`
+	MensajeChat *entities.Mensaje  `json:"mensaje_chat,omitempty"`
 	Mensajes    []entities.Mensaje `json:"mensajes,omitempty"`
 }
 

@@ -30,14 +30,24 @@ type Hub struct {
 	// Canal para registrar clientes
 	register chan *Client
 
-	// Canal para desregistrar clientes
+	// Canal para desregistrar clientes (cierra la conexión)
 	unregister chan *Client
+
+	// Canal para cambiar de zona sin cerrar la conexión
+	changeZone chan *zoneChangeRequest
 
 	// Canal para broadcast de mensajes
 	broadcast chan *BroadcastRequest
 
 	// Mutex para sincronización
 	mu sync.RWMutex
+}
+
+// zoneChangeRequest contiene la info para cambiar un cliente de zona
+type zoneChangeRequest struct {
+	Client  *Client
+	OldZona string
+	NewZona string
 }
 
 // BroadcastRequest contiene el mensaje y la zona a la que se enviará
@@ -52,6 +62,7 @@ func NewHub() *Hub {
 		clients:    make(map[string]map[*Client]bool),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		changeZone: make(chan *zoneChangeRequest),
 		broadcast:  make(chan *BroadcastRequest),
 	}
 }
@@ -83,6 +94,25 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 			log.Printf("Cliente desregistrado de zona: %s", client.ZonaID)
 
+		case req := <-h.changeZone:
+			h.mu.Lock()
+			// Remover de la zona antigua sin cerrar el canal Send
+			if clients, ok := h.clients[req.OldZona]; ok {
+				if _, ok := clients[req.Client]; ok {
+					delete(clients, req.Client)
+					if len(clients) == 0 {
+						delete(h.clients, req.OldZona)
+					}
+				}
+			}
+			// Registrar en la zona nueva
+			if _, ok := h.clients[req.NewZona]; !ok {
+				h.clients[req.NewZona] = make(map[*Client]bool)
+			}
+			h.clients[req.NewZona][req.Client] = true
+			h.mu.Unlock()
+			log.Printf("Cliente cambió de zona %s a %s. Total clientes en zona nueva: %d", req.OldZona, req.NewZona, len(h.clients[req.NewZona]))
+
 		case broadcastReq := <-h.broadcast:
 			h.mu.Lock()
 			if clients, ok := h.clients[broadcastReq.ZonaID]; ok {
@@ -105,9 +135,18 @@ func (h *Hub) RegisterClient(client *Client) {
 	h.register <- client
 }
 
-// UnregisterClient desregistra un cliente del hub
+// UnregisterClient desregistra un cliente del hub (cierra la conexión)
 func (h *Hub) UnregisterClient(client *Client) {
 	h.unregister <- client
+}
+
+// ChangeClientZone cambia un cliente de una zona a otra sin cerrar la conexión
+func (h *Hub) ChangeClientZone(client *Client, oldZona, newZona string) {
+	h.changeZone <- &zoneChangeRequest{
+		Client:  client,
+		OldZona: oldZona,
+		NewZona: newZona,
+	}
 }
 
 // BroadcastToZone envía un mensaje a todos los clientes de una zona específica
